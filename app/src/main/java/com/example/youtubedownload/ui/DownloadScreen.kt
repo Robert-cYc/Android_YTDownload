@@ -29,6 +29,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +64,7 @@ import com.example.youtubedownload.domain.VideoQuality
 fun DownloadScreen(
     uiState: DownloadUiState,
     onUrlChange: (String) -> Unit,
+    onPasteText: (String) -> Unit,
     onFormatSelected: (DownloadFormat) -> Unit,
     onVideoQualitySelected: (VideoQuality) -> Unit,
     onAudioBitrateSelected: (AudioBitrate) -> Unit,
@@ -132,7 +134,7 @@ fun DownloadScreen(
                         if (!uiState.isDownloading) {
                             IconButton(
                                 onClick = {
-                                    clipboardManager.getText()?.text?.let(onUrlChange)
+                                    clipboardManager.getText()?.text?.let(onPasteText)
                                 }
                             ) {
                                 Icon(Icons.Default.ContentPaste, contentDescription = "Paste URL")
@@ -140,6 +142,46 @@ fun DownloadScreen(
                         }
                     }
                 }
+            )
+
+            if (!uiState.isDownloading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            clipboardManager.getText()?.text?.let(onPasteText)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentPaste,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Paste from Clipboard")
+                    }
+
+                    if (uiState.url.isNotEmpty()) {
+                        OutlinedButton(onClick = { onUrlChange("") }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Clear")
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = "Tip: In YouTube, tap Share → YouTube Downloader to send a video here directly.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Text(

@@ -1,6 +1,8 @@
 package com.example.youtubedownload
 
 import android.Manifest
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -15,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import com.example.youtubedownload.domain.YouTubeUrlValidator
 import com.example.youtubedownload.ui.DownloadScreen
 import com.example.youtubedownload.ui.DownloadViewModel
 
@@ -42,6 +45,7 @@ class MainActivity : ComponentActivity() {
                 DownloadScreen(
                     uiState = uiState,
                     onUrlChange = viewModel::onUrlChange,
+                    onPasteText = viewModel::onPasteText,
                     onFormatSelected = viewModel::onFormatSelected,
                     onVideoQualitySelected = viewModel::onVideoQualitySelected,
                     onAudioBitrateSelected = viewModel::onAudioBitrateSelected,
@@ -63,6 +67,20 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleShareIntent(intent)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus || viewModel.uiState.value.url.isNotBlank()) return
+
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        val hasText = clipboard.primaryClipDescription
+            ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+        if (!hasText) return
+
+        val text = clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString() ?: return
+        val youtubeUrl = YouTubeUrlValidator.extractYouTubeUrl(text) ?: return
+        viewModel.onClipboardYouTubeUrlDetected(youtubeUrl)
     }
 
     private fun handleShareIntent(intent: Intent?) {

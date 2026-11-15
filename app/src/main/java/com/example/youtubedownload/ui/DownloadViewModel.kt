@@ -43,14 +43,31 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
     private var activeJob: Job? = null
     private var activeProcessId: String? = null
+    private var lastAutoFilledClipboardUrl: String? = null
 
     fun onUrlChange(newUrl: String) {
         _uiState.update { it.copy(url = newUrl) }
     }
 
+    fun onPasteText(rawText: String) {
+        val extracted = YouTubeUrlValidator.extractYouTubeUrl(rawText) ?: rawText.trim()
+        if (extracted.isNotEmpty()) {
+            lastAutoFilledClipboardUrl = extracted
+            _uiState.update { it.copy(url = extracted, status = DownloadStatus.Idle) }
+        }
+    }
+
+    fun onClipboardYouTubeUrlDetected(url: String) {
+        if (_uiState.value.url.isBlank() && url != lastAutoFilledClipboardUrl) {
+            lastAutoFilledClipboardUrl = url
+            _uiState.update { it.copy(url = url, status = DownloadStatus.Idle) }
+        }
+    }
+
     fun onSharedText(rawText: String) {
         val extracted = YouTubeUrlValidator.extractYouTubeUrl(rawText) ?: rawText.trim()
         if (extracted.isNotEmpty()) {
+            lastAutoFilledClipboardUrl = extracted
             _uiState.update { it.copy(url = extracted, status = DownloadStatus.Idle) }
         }
     }
