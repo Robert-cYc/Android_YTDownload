@@ -485,7 +485,9 @@ private fun StatusCard(
                         Text(
                             text = status.message,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     TextButton(onClick = onUpdateEngine) {

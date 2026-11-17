@@ -4,6 +4,7 @@ import com.example.youtubedownload.domain.AudioBitrate
 import com.example.youtubedownload.domain.DownloadConfig
 import com.example.youtubedownload.domain.DownloadFormat
 import com.example.youtubedownload.domain.DownloadOptionBuilder
+import com.example.youtubedownload.domain.ErrorMessageFormatter
 import com.example.youtubedownload.domain.VideoQuality
 import com.example.youtubedownload.domain.YouTubeUrlValidator
 import org.junit.Assert.assertEquals
@@ -79,5 +80,19 @@ class DownloadOptionBuilderTest {
         assertTrue(options.contains("-x" to null))
         assertTrue(options.contains("--audio-format" to "mp3"))
         assertTrue(options.contains("--audio-quality" to "320K"))
+    }
+
+    @Test
+    fun `summarizes 100-line error output into at most 2 concise lines`() {
+        val noisyLines = (1..100).joinToString("\n") { i ->
+            if (i == 95) "ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot"
+            else "WARNING: some verbose line $i"
+        }
+
+        val summary = ErrorMessageFormatter.summarize(noisyLines)
+        val resultLines = summary.lines()
+
+        assertTrue(resultLines.size <= 2)
+        assertTrue(summary.contains("ERROR: [youtube] dQw4w9WgXcQ"))
     }
 }

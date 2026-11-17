@@ -10,6 +10,7 @@ import com.example.youtubedownload.domain.DownloadConfig
 import com.example.youtubedownload.domain.DownloadFormat
 import com.example.youtubedownload.domain.DownloadStatus
 import com.example.youtubedownload.domain.DownloadedItem
+import com.example.youtubedownload.domain.ErrorMessageFormatter
 import com.example.youtubedownload.domain.VideoQuality
 import com.example.youtubedownload.domain.YouTubeUrlValidator
 import com.yausername.youtubedl_android.YoutubeDL
@@ -169,7 +170,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
                 _uiState.update {
                     it.copy(
                         status = DownloadStatus.Error(
-                            t.localizedMessage ?: "Download failed due to an unknown error."
+                            ErrorMessageFormatter.summarize(t.localizedMessage)
                         )
                     )
                 }
@@ -207,7 +208,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
                 _uiState.update {
                     it.copy(
                         isUpdatingEngine = false,
-                        engineUpdateMessage = "Update failed: ${t.localizedMessage ?: "Unknown error"}"
+                        engineUpdateMessage = "Update failed: ${ErrorMessageFormatter.summarize(t.localizedMessage, maxLines = 1)}"
                     )
                 }
             }

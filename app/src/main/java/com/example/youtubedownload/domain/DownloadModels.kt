@@ -108,3 +108,33 @@ object DownloadOptionBuilder {
         return options
     }
 }
+
+/** Summarizes verbose multi-line yt-dlp / exception output into 1-2 concise lines. */
+object ErrorMessageFormatter {
+
+    fun summarize(rawMessage: String?, maxLines: Int = 2, maxChars: Int = 220): String {
+        if (rawMessage.isNullOrBlank()) return "Download failed due to an unknown error."
+
+        val lines = rawMessage
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toList()
+
+        if (lines.isEmpty()) return "Download failed due to an unknown error."
+
+        val errorLines = lines.filter { it.startsWith("ERROR:", ignoreCase = true) }
+        val selected = if (errorLines.isNotEmpty()) {
+            errorLines.takeLast(maxLines)
+        } else {
+            lines.takeLast(maxLines)
+        }
+
+        val joined = selected.joinToString("\n")
+        return if (joined.length > maxChars) {
+            joined.take(maxChars - 1).trimEnd() + "…"
+        } else {
+            joined
+        }
+    }
+}

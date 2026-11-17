@@ -28,8 +28,8 @@ class YouTubeDownloadApp : Application() {
             try {
                 YoutubeDL.getInstance().init(this@YouTubeDownloadApp)
                 FFmpeg.getInstance().init(this@YouTubeDownloadApp)
-                initResult.complete(null)
                 autoUpdateYtDlpIfFirstRun()
+                initResult.complete(null)
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to initialize youtubedl-android / FFmpeg", t)
                 initResult.complete(t)
