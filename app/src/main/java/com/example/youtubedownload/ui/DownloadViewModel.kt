@@ -9,6 +9,7 @@ import com.example.youtubedownload.domain.AudioBitrate
 import com.example.youtubedownload.domain.DownloadConfig
 import com.example.youtubedownload.domain.DownloadFormat
 import com.example.youtubedownload.domain.DownloadStatus
+import com.example.youtubedownload.domain.DownloadedItem
 import com.example.youtubedownload.domain.VideoQuality
 import com.example.youtubedownload.domain.YouTubeUrlValidator
 import com.yausername.youtubedl_android.YoutubeDL
@@ -28,7 +29,9 @@ data class DownloadUiState(
     val audioBitrate: AudioBitrate = AudioBitrate.K192,
     val status: DownloadStatus = DownloadStatus.Idle,
     val isUpdatingEngine: Boolean = false,
-    val engineUpdateMessage: String? = null
+    val engineUpdateMessage: String? = null,
+    val downloadFolderPath: String = "",
+    val downloadedFiles: List<DownloadedItem> = emptyList()
 ) {
     val isDownloading: Boolean
         get() = status is DownloadStatus.Initializing || status is DownloadStatus.Downloading
@@ -38,12 +41,25 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
     private val repository = YouTubeDownloadRepository(application)
 
-    private val _uiState = MutableStateFlow(DownloadUiState())
+    private val _uiState = MutableStateFlow(
+        DownloadUiState(downloadFolderPath = repository.getDownloadFolderDisplayPath())
+    )
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
 
     private var activeJob: Job? = null
     private var activeProcessId: String? = null
     private var lastAutoFilledClipboardUrl: String? = null
+
+    init {
+        refreshDownloadedFiles()
+    }
+
+    fun refreshDownloadedFiles() {
+        viewModelScope.launch {
+            val files = repository.listDownloadedFiles()
+            _uiState.update { it.copy(downloadedFiles = files) }
+        }
+    }
 
     fun onUrlChange(newUrl: String) {
         _uiState.update { it.copy(url = newUrl) }
@@ -132,12 +148,16 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
                         }
                     }
                 }
+                val files = repository.listDownloadedFiles()
                 _uiState.update {
                     it.copy(
                         status = DownloadStatus.Completed(
                             fileName = result.fileName,
-                            savedLocation = result.savedLocation
-                        )
+                            savedLocation = result.savedLocation,
+                            contentUri = result.contentUri,
+                            mimeType = result.mimeType
+                        ),
+                        downloadedFiles = files
                     )
                 }
             } catch (_: YoutubeDL.CanceledException) {

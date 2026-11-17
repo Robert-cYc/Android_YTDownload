@@ -1,8 +1,10 @@
 package com.example.youtubedownload.data
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -11,6 +13,7 @@ import com.example.youtubedownload.YouTubeDownloadApp
 import com.example.youtubedownload.domain.DownloadConfig
 import com.example.youtubedownload.domain.DownloadFormat
 import com.example.youtubedownload.domain.DownloadOptionBuilder
+import com.example.youtubedownload.domain.DownloadedItem
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
@@ -20,10 +23,15 @@ import java.io.IOException
 
 data class DownloadedFileResult(
     val fileName: String,
-    val savedLocation: String
+    val savedLocation: String,
+    val contentUri: String?,
+    val mimeType: String
 )
 
 class YouTubeDownloadRepository(private val context: Context) {
+
+    fun getDownloadFolderDisplayPath(): String =
+        "Internal Storage / ${Environment.DIRECTORY_DOWNLOADS} / $SUBFOLDER_NAME"
 
     private suspend fun ensureInitialized() {
         val app = context.applicationContext as YouTubeDownloadApp
@@ -76,8 +84,100 @@ class YouTubeDownloadRepository(private val context: Context) {
 
     suspend fun updateYtDlp(): YoutubeDL.UpdateStatus? = withContext(Dispatchers.IO) {
         ensureInitialized()
-        YoutubeDL.getInstance().updateYoutubeDL(context.applicationContext, YoutubeDL.UpdateChannel.STABLE)
+        YoutubeDL.getInstance().updateYoutubeDL(
+            context.applicationContext,
+            YoutubeDL.UpdateChannel.NIGHTLY
+        )
     }
+
+    suspend fun listDownloadedFiles(): List<DownloadedItem> = withContext(Dispatchers.IO) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                queryMediaStoreDownloads()
+            } else {
+                listLegacyDownloadFiles()
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to list downloaded files", t)
+            emptyList()
+        }
+    }
+
+    private fun queryMediaStoreDownloads(): List<DownloadedItem> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptyList()
+
+        val items = mutableListOf<DownloadedItem>()
+        val projection = arrayOf(
+            MediaStore.Downloads._ID,
+            MediaStore.Downloads.DISPLAY_NAME,
+            MediaStore.Downloads.SIZE,
+            MediaStore.Downloads.MIME_TYPE,
+            MediaStore.Downloads.RELATIVE_PATH
+        )
+        val selection = "${MediaStore.Downloads.RELATIVE_PATH} LIKE ?"
+        val selectionArgs = arrayOf("%$SUBFOLDER_NAME%")
+        val sortOrder = "${MediaStore.Downloads.DATE_ADDED} DESC"
+
+        context.contentResolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            sortOrder
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
+            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
+            val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE)
+            val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.MIME_TYPE)
+            val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.RELATIVE_PATH)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idCol)
+                val name = cursor.getString(nameCol) ?: continue
+                val size = cursor.getLong(sizeCol)
+                val mime = cursor.getString(mimeCol) ?: guessMimeType(name)
+                val relPath = cursor.getString(pathCol)
+                    ?: "${Environment.DIRECTORY_DOWNLOADS}/$SUBFOLDER_NAME/"
+                val contentUri = ContentUris.withAppendedId(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    id
+                ).toString()
+
+                items += DownloadedItem(
+                    fileName = name,
+                    folderPath = "Internal Storage / ${relPath.trimEnd('/')}",
+                    sizeBytes = size,
+                    contentUri = contentUri,
+                    mimeType = mime
+                )
+            }
+        }
+        return items
+    }
+
+    private fun listLegacyDownloadFiles(): List<DownloadedItem> {
+        @Suppress("DEPRECATION")
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val targetDir = File(downloadsDir, SUBFOLDER_NAME)
+        if (!targetDir.exists()) return emptyList()
+
+        return targetDir.listFiles()
+            ?.filter { it.isFile && it.length() > 0 }
+            ?.sortedByDescending { it.lastModified() }
+            ?.map { file ->
+                DownloadedItem(
+                    fileName = file.name,
+                    folderPath = targetDir.absolutePath,
+                    sizeBytes = file.length(),
+                    contentUri = Uri.fromFile(file).toString(),
+                    mimeType = guessMimeType(file.name)
+                )
+            }
+            ?: emptyList()
+    }
+
+    private fun guessMimeType(fileName: String): String =
+        if (fileName.endsWith(".mp3", ignoreCase = true)) "audio/mpeg" else "video/mp4"
 
     private fun findOutputFile(tempDir: File, expectedExt: String): File? {
         val files = tempDir.listFiles()?.filter { it.isFile && it.length() > 0 } ?: return null
@@ -86,11 +186,9 @@ class YouTubeDownloadRepository(private val context: Context) {
     }
 
     private fun publishToDownloads(sourceFile: File, format: DownloadFormat): DownloadedFileResult {
-        val mimeType = when (format) {
-            DownloadFormat.MP4 -> "video/mp4"
-            DownloadFormat.MP3 -> "audio/mpeg"
-        }
+        val mimeType = format.mimeType
         val fileName = sourceFile.name
+        val displayFolder = getDownloadFolderDisplayPath()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = context.contentResolver
@@ -124,7 +222,9 @@ class YouTubeDownloadRepository(private val context: Context) {
 
             return DownloadedFileResult(
                 fileName = fileName,
-                savedLocation = "Downloads/$SUBFOLDER_NAME/$fileName"
+                savedLocation = "$displayFolder / $fileName",
+                contentUri = uri.toString(),
+                mimeType = mimeType
             )
         } else {
             @Suppress("DEPRECATION")
@@ -142,7 +242,9 @@ class YouTubeDownloadRepository(private val context: Context) {
 
             return DownloadedFileResult(
                 fileName = targetFile.name,
-                savedLocation = targetFile.absolutePath
+                savedLocation = targetFile.absolutePath,
+                contentUri = Uri.fromFile(targetFile).toString(),
+                mimeType = mimeType
             )
         }
     }
@@ -164,6 +266,6 @@ class YouTubeDownloadRepository(private val context: Context) {
 
     companion object {
         private const val TAG = "YouTubeDownloadRepo"
-        private const val SUBFOLDER_NAME = "YouTubeDownload"
+        const val SUBFOLDER_NAME = "YouTubeDownload"
     }
 }

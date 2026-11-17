@@ -1,8 +1,8 @@
 package com.example.youtubedownload.domain
 
-enum class DownloadFormat(val label: String, val extension: String) {
-    MP4("MP4 (Video)", "mp4"),
-    MP3("MP3 (Audio)", "mp3")
+enum class DownloadFormat(val label: String, val extension: String, val mimeType: String) {
+    MP4("MP4 (Video)", "mp4", "video/mp4"),
+    MP3("MP3 (Audio)", "mp3", "audio/mpeg")
 }
 
 enum class VideoQuality(val label: String, val maxHeight: Int?) {
@@ -34,6 +34,14 @@ data class DownloadConfig(
     val audioBitrate: AudioBitrate = AudioBitrate.K192
 )
 
+data class DownloadedItem(
+    val fileName: String,
+    val folderPath: String,
+    val sizeBytes: Long,
+    val contentUri: String?,
+    val mimeType: String
+)
+
 sealed interface DownloadStatus {
     data object Idle : DownloadStatus
     data object Initializing : DownloadStatus
@@ -44,7 +52,9 @@ sealed interface DownloadStatus {
     ) : DownloadStatus
     data class Completed(
         val fileName: String,
-        val savedLocation: String
+        val savedLocation: String,
+        val contentUri: String?,
+        val mimeType: String
     ) : DownloadStatus
     data object Cancelled : DownloadStatus
     data class Error(val message: String) : DownloadStatus
@@ -79,6 +89,8 @@ object DownloadOptionBuilder {
         val options = mutableListOf<Pair<String, String?>>(
             "--no-playlist" to null,
             "--no-mtime" to null,
+            "--no-part" to null,
+            "--windows-filenames" to null,
             "-o" to outputTemplate
         )
 

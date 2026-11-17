@@ -58,6 +58,8 @@ class DownloadOptionBuilderTest {
         val options = DownloadOptionBuilder.buildOptions(config, "/tmp/%(title)s.%(ext)s")
 
         assertTrue(options.contains("--no-playlist" to null))
+        assertTrue(options.contains("--no-part" to null))
+        assertTrue(options.contains("--windows-filenames" to null))
         assertTrue(options.contains("-o" to "/tmp/%(title)s.%(ext)s"))
         assertTrue(options.contains("--merge-output-format" to "mp4"))
         val formatSelector = options.first { it.first == "-f" }.second
