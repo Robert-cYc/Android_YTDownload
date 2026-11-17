@@ -7,6 +7,8 @@ import com.example.youtubedownload.domain.DownloadOptionBuilder
 import com.example.youtubedownload.domain.ErrorMessageFormatter
 import com.example.youtubedownload.domain.VideoQuality
 import com.example.youtubedownload.domain.YouTubeUrlValidator
+import com.example.youtubedownload.ui.AppLanguage
+import com.example.youtubedownload.ui.AppStrings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -95,5 +97,13 @@ class DownloadOptionBuilderTest {
 
         assertTrue(resultLines.size <= 2)
         assertTrue(summary.contains("ERROR: [youtube] dQw4w9WgXcQ"))
+    }
+
+    @Test
+    fun `toggles between Traditional Chinese and English strings`() {
+        assertEquals(AppLanguage.EN, AppLanguage.ZH_TW.next())
+        assertEquals(AppLanguage.ZH_TW, AppLanguage.EN.next())
+        assertEquals("YouTube 下載器", AppStrings.forLanguage(AppLanguage.ZH_TW).appTitle)
+        assertEquals("YouTube Downloader", AppStrings.forLanguage(AppLanguage.EN).appTitle)
     }
 }

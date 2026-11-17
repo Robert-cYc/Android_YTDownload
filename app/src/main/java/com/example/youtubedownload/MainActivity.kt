@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onCancelDownload = viewModel::cancelDownload,
                     onUpdateEngine = viewModel::updateEngine,
+                    onToggleLanguage = viewModel::toggleLanguage,
                     onDismissEngineMessage = viewModel::dismissEngineMessage
                 )
             }

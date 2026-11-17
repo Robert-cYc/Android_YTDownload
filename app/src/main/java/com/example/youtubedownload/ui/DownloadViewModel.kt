@@ -1,6 +1,7 @@
 package com.example.youtubedownload.ui
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -32,7 +33,8 @@ data class DownloadUiState(
     val isUpdatingEngine: Boolean = false,
     val engineUpdateMessage: String? = null,
     val downloadFolderPath: String = "",
-    val downloadedFiles: List<DownloadedItem> = emptyList()
+    val downloadedFiles: List<DownloadedItem> = emptyList(),
+    val language: AppLanguage = AppLanguage.ZH_TW
 ) {
     val isDownloading: Boolean
         get() = status is DownloadStatus.Initializing || status is DownloadStatus.Downloading
@@ -41,9 +43,13 @@ data class DownloadUiState(
 class DownloadViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = YouTubeDownloadRepository(application)
+    private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow(
-        DownloadUiState(downloadFolderPath = repository.getDownloadFolderDisplayPath())
+        DownloadUiState(
+            downloadFolderPath = repository.getDownloadFolderDisplayPath(),
+            language = AppLanguage.fromCode(prefs.getString(KEY_LANGUAGE, AppLanguage.ZH_TW.code))
+        )
     )
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
 
@@ -53,6 +59,12 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
     init {
         refreshDownloadedFiles()
+    }
+
+    fun toggleLanguage() {
+        val nextLang = _uiState.value.language.next()
+        prefs.edit().putString(KEY_LANGUAGE, nextLang.code).apply()
+        _uiState.update { it.copy(language = nextLang) }
     }
 
     fun refreshDownloadedFiles() {
@@ -109,14 +121,11 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         val current = _uiState.value
         if (current.isDownloading) return
 
+        val strings = AppStrings.forLanguage(current.language)
         val trimmedUrl = current.url.trim()
         if (!YouTubeUrlValidator.isValidYouTubeUrl(trimmedUrl)) {
             _uiState.update {
-                it.copy(
-                    status = DownloadStatus.Error(
-                        "Please enter a valid YouTube URL (youtube.com or youtu.be)."
-                    )
-                )
+                it.copy(status = DownloadStatus.Error(strings.invalidUrlError))
             }
             return
         }
@@ -191,24 +200,27 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updateEngine() {
-        if (_uiState.value.isUpdatingEngine || _uiState.value.isDownloading) return
+        val current = _uiState.value
+        if (current.isUpdatingEngine || current.isDownloading) return
 
         _uiState.update { it.copy(isUpdatingEngine = true, engineUpdateMessage = null) }
         viewModelScope.launch {
+            val strings = AppStrings.forLanguage(_uiState.value.language)
             try {
                 val status = repository.updateYtDlp()
                 val message = when (status) {
-                    YoutubeDL.UpdateStatus.DONE -> "yt-dlp updated to the latest version."
-                    YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> "yt-dlp is already up to date."
-                    null -> "yt-dlp update finished."
+                    YoutubeDL.UpdateStatus.DONE -> strings.engineUpdatedDone
+                    YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> strings.engineAlreadyUpToDate
+                    null -> strings.engineUpdateFinished
                 }
                 _uiState.update { it.copy(isUpdatingEngine = false, engineUpdateMessage = message) }
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to update yt-dlp", t)
+                val summary = ErrorMessageFormatter.summarize(t.localizedMessage, maxLines = 1)
                 _uiState.update {
                     it.copy(
                         isUpdatingEngine = false,
-                        engineUpdateMessage = "Update failed: ${ErrorMessageFormatter.summarize(t.localizedMessage, maxLines = 1)}"
+                        engineUpdateMessage = strings.engineUpdateFailed(summary)
                     )
                 }
             }
@@ -217,5 +229,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
     companion object {
         private const val TAG = "DownloadViewModel"
+        private const val PREFS_NAME = "yt_downloader_prefs"
+        private const val KEY_LANGUAGE = "app_language"
     }
 }

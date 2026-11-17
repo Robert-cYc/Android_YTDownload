@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material.icons.filled.VideoFile
@@ -83,11 +84,13 @@ fun DownloadScreen(
     onStartDownload: () -> Unit,
     onCancelDownload: () -> Unit,
     onUpdateEngine: () -> Unit,
+    onToggleLanguage: () -> Unit,
     onDismissEngineMessage: () -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val strings = AppStrings.forLanguage(uiState.language)
 
     LaunchedEffect(uiState.engineUpdateMessage) {
         val message = uiState.engineUpdateMessage ?: return@LaunchedEffect
@@ -98,8 +101,17 @@ fun DownloadScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("YouTube Downloader") },
+                title = { Text(strings.appTitle) },
                 actions = {
+                    TextButton(onClick = onToggleLanguage) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(uiState.language.toggleLabel)
+                    }
                     IconButton(
                         onClick = onUpdateEngine,
                         enabled = !uiState.isUpdatingEngine && !uiState.isDownloading
@@ -112,7 +124,7 @@ fun DownloadScreen(
                         } else {
                             Icon(
                                 imageVector = Icons.Default.SystemUpdateAlt,
-                                contentDescription = "Update yt-dlp"
+                                contentDescription = strings.updateYtDlpDesc
                             )
                         }
                     }
@@ -132,7 +144,7 @@ fun DownloadScreen(
             OutlinedTextField(
                 value = uiState.url,
                 onValueChange = onUrlChange,
-                label = { Text("YouTube URL") },
+                label = { Text(strings.urlLabel) },
                 placeholder = { Text("https://www.youtube.com/watch?v=...") },
                 singleLine = true,
                 enabled = !uiState.isDownloading,
@@ -141,7 +153,7 @@ fun DownloadScreen(
                     Row {
                         if (uiState.url.isNotEmpty() && !uiState.isDownloading) {
                             IconButton(onClick = { onUrlChange("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear URL")
+                                Icon(Icons.Default.Clear, contentDescription = strings.clear)
                             }
                         }
                         if (!uiState.isDownloading) {
@@ -150,7 +162,10 @@ fun DownloadScreen(
                                     clipboardManager.getText()?.text?.let(onPasteText)
                                 }
                             ) {
-                                Icon(Icons.Default.ContentPaste, contentDescription = "Paste URL")
+                                Icon(
+                                    Icons.Default.ContentPaste,
+                                    contentDescription = strings.pasteFromClipboard
+                                )
                             }
                         }
                     }
@@ -174,7 +189,7 @@ fun DownloadScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text("Paste from Clipboard")
+                        Text(strings.pasteFromClipboard)
                     }
 
                     if (uiState.url.isNotEmpty()) {
@@ -185,20 +200,20 @@ fun DownloadScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(6.dp))
-                            Text("Clear")
+                            Text(strings.clear)
                         }
                     }
                 }
             }
 
             Text(
-                text = "Tip: In YouTube, tap Share → YouTube Downloader to send a video here directly.",
+                text = strings.shareTip,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Text(
-                text = "Format",
+                text = strings.formatTitle,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
@@ -224,14 +239,14 @@ fun DownloadScreen(
                             )
                         }
                     ) {
-                        Text(format.label)
+                        Text(strings.formatLabel(format))
                     }
                 }
             }
 
             if (uiState.format == DownloadFormat.MP4) {
                 Text(
-                    text = "Video Quality",
+                    text = strings.videoQualityTitle,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -244,13 +259,13 @@ fun DownloadScreen(
                             selected = uiState.videoQuality == quality,
                             onClick = { onVideoQualitySelected(quality) },
                             enabled = !uiState.isDownloading,
-                            label = { Text(quality.label) }
+                            label = { Text(strings.qualityLabel(quality)) }
                         )
                     }
                 }
             } else {
                 Text(
-                    text = "Audio Bitrate",
+                    text = strings.audioBitrateTitle,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -284,7 +299,13 @@ fun DownloadScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(if (uiState.isDownloading) "Downloading..." else "Download ${uiState.format.name}")
+                    Text(
+                        if (uiState.isDownloading) {
+                            strings.downloadingBtn
+                        } else {
+                            strings.downloadButtonText(uiState.format)
+                        }
+                    )
                 }
 
                 if (uiState.isDownloading) {
@@ -295,13 +316,14 @@ fun DownloadScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text("Cancel")
+                        Text(strings.cancelBtn)
                     }
                 }
             }
 
             StatusCard(
                 status = uiState.status,
+                strings = strings,
                 onOpenFile = { uriStr, mimeType -> openDownloadedFile(context, uriStr, mimeType) },
                 onOpenFolder = { openDownloadsFolder(context) },
                 onUpdateEngine = onUpdateEngine
@@ -310,6 +332,7 @@ fun DownloadScreen(
             DownloadFolderCard(
                 folderPath = uiState.downloadFolderPath,
                 files = uiState.downloadedFiles,
+                strings = strings,
                 onOpenFolder = { openDownloadsFolder(context) },
                 onOpenFile = { item ->
                     item.contentUri?.let { openDownloadedFile(context, it, item.mimeType) }
@@ -322,6 +345,7 @@ fun DownloadScreen(
 @Composable
 private fun StatusCard(
     status: DownloadStatus,
+    strings: AppStrings,
     onOpenFile: (String, String) -> Unit,
     onOpenFolder: () -> Unit,
     onUpdateEngine: () -> Unit
@@ -332,7 +356,7 @@ private fun StatusCard(
         DownloadStatus.Initializing -> {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Preparing download...", style = MaterialTheme.typography.titleSmall)
+                    Text(strings.preparingDownload, style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(8.dp))
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
@@ -352,12 +376,12 @@ private fun StatusCard(
                         val pctText = if (status.progress >= 0f) {
                             "${status.progress.toInt().coerceIn(0, 100)}%"
                         } else {
-                            "Processing..."
+                            strings.processing
                         }
                         Text(pctText, style = MaterialTheme.typography.titleSmall)
                         if (status.etaSeconds > 0L) {
                             Text(
-                                "ETA ${status.etaSeconds}s",
+                                strings.etaText(status.etaSeconds),
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -407,7 +431,7 @@ private fun StatusCard(
                         )
                         Column {
                             Text(
-                                text = "Download Completed",
+                                text = strings.downloadCompleted,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -417,7 +441,7 @@ private fun StatusCard(
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = "Folder: ${status.savedLocation}",
+                                text = "${strings.folderPrefix}${status.savedLocation}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -435,7 +459,7 @@ private fun StatusCard(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("Open File")
+                                Text(strings.openFile)
                             }
                         }
                         OutlinedButton(onClick = onOpenFolder) {
@@ -445,7 +469,7 @@ private fun StatusCard(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(6.dp))
-                            Text("Open Folder")
+                            Text(strings.openFolder)
                         }
                     }
                 }
@@ -455,7 +479,7 @@ private fun StatusCard(
         DownloadStatus.Cancelled -> {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Download cancelled.",
+                    text = strings.downloadCancelled,
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -497,7 +521,7 @@ private fun StatusCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text("Update yt-dlp Engine & Retry")
+                        Text(strings.updateEngineRetry)
                     }
                 }
             }
@@ -509,6 +533,7 @@ private fun StatusCard(
 private fun DownloadFolderCard(
     folderPath: String,
     files: List<DownloadedItem>,
+    strings: AppStrings,
     onOpenFolder: () -> Unit,
     onOpenFile: (DownloadedItem) -> Unit
 ) {
@@ -524,7 +549,7 @@ private fun DownloadFolderCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Download Folder",
+                        text = strings.downloadFolderTitle,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -541,13 +566,13 @@ private fun DownloadFolderCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text("Open")
+                    Text(strings.openShort)
                 }
             }
 
             if (files.isNotEmpty()) {
                 Text(
-                    text = "Downloaded Files (${files.size})",
+                    text = strings.downloadedFilesHeader(files.size),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -588,7 +613,7 @@ private fun DownloadFolderCard(
                         }
                         if (item.contentUri != null) {
                             TextButton(onClick = { onOpenFile(item) }) {
-                                Text("Open")
+                                Text(strings.openShort)
                             }
                         }
                     }
