@@ -50,6 +50,7 @@ class YouTubeDownloadRepository(private val context: Context) {
         onProgress: (progress: Float, etaSeconds: Long, line: String) -> Unit
     ): DownloadedFileResult = withContext(Dispatchers.IO) {
         ensureInitialized()
+        PythonDnsPatchInstaller.refreshHostCache(context)
 
         val tempDir = File(context.cacheDir, "yt_temp/$processId").apply { mkdirs() }
         try {
@@ -84,6 +85,7 @@ class YouTubeDownloadRepository(private val context: Context) {
 
     suspend fun updateYtDlp(): YoutubeDL.UpdateStatus? = withContext(Dispatchers.IO) {
         ensureInitialized()
+        PythonDnsPatchInstaller.refreshHostCache(context)
         YoutubeDL.getInstance().updateYoutubeDL(
             context.applicationContext,
             YoutubeDL.UpdateChannel.NIGHTLY

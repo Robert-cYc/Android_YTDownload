@@ -3,6 +3,7 @@ package com.example.youtubedownload
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import com.example.youtubedownload.data.PythonDnsPatchInstaller
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.CompletableDeferred
@@ -28,6 +29,8 @@ class YouTubeDownloadApp : Application() {
             try {
                 YoutubeDL.getInstance().init(this@YouTubeDownloadApp)
                 FFmpeg.getInstance().init(this@YouTubeDownloadApp)
+                PythonDnsPatchInstaller.install(this@YouTubeDownloadApp)
+                PythonDnsPatchInstaller.refreshHostCache(this@YouTubeDownloadApp)
                 autoUpdateYtDlpIfFirstRun()
                 initResult.complete(null)
             } catch (t: Throwable) {

@@ -90,6 +90,7 @@ object DownloadOptionBuilder {
             "--no-playlist" to null,
             "--no-mtime" to null,
             "--no-part" to null,
+            "--force-ipv4" to null,
             "--windows-filenames" to null,
             "-o" to outputTemplate
         )
