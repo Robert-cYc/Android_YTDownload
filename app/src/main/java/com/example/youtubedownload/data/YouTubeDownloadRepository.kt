@@ -75,7 +75,7 @@ class YouTubeDownloadRepository(private val context: Context) {
                 addOption("--no-warnings")
                 addOption("--force-ipv4")
             }
-            val response = YoutubeDL.getInstance().execute(request, null)
+            val response = YoutubeDL.getInstance().execute(request, "yt-search") { _, _, _ -> }
             parseSearchResults(response.out.orEmpty())
         }
 
