@@ -177,7 +177,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         val extracted = YouTubeUrlValidator.extractYouTubeUrl(rawText) ?: rawText.trim()
         if (extracted.isNotEmpty()) {
             lastAutoFilledClipboardUrl = extracted
-            _uiState.update { it.copy(url = extracted, status = DownloadStatus.Idle) }
+            _uiState.update { it.copy(activeTab = 1, url = extracted, status = DownloadStatus.Idle) }
             schedulePreviewFetch(extracted, debounceMs = 0L)
         }
     }

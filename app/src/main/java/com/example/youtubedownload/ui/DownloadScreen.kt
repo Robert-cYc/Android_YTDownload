@@ -194,16 +194,65 @@ fun DownloadScreen(
                 Tab(
                     selected = uiState.activeTab == 0,
                     onClick = { onTabSelected(0) },
-                    text = { Text(strings.tabLink) }
+                    text = { Text(strings.tabSearch) }
                 )
                 Tab(
                     selected = uiState.activeTab == 1,
                     onClick = { onTabSelected(1) },
-                    text = { Text(strings.tabSearch) }
+                    text = { Text(strings.tabLink) }
                 )
             }
 
             if (uiState.activeTab == 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        label = { Text(strings.searchLabel) },
+                        placeholder = { Text(strings.searchPlaceholder) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                keyboardController?.hide()
+                                onSearchSubmit()
+                            }
+                        ),
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchQueryChange("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = strings.clear)
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = {
+                            keyboardController?.hide()
+                            onSearchSubmit()
+                        },
+                        enabled = uiState.searchQuery.isNotBlank() &&
+                            uiState.searchState !is SearchState.Searching
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = strings.searchBtn,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                SearchResultsSection(
+                    searchState = uiState.searchState,
+                    strings = strings,
+                    onDownloadItem = onDownloadSearchResult
+                )
+            } else {
                 OutlinedTextField(
                     value = uiState.url,
                     onValueChange = onUrlChange,
@@ -274,55 +323,6 @@ fun DownloadScreen(
                     previewState = uiState.previewState,
                     isPlaylistUrl = YouTubeUrlValidator.isPlaylistUrl(uiState.url),
                     strings = strings
-                )
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = onSearchQueryChange,
-                        label = { Text(strings.searchLabel) },
-                        placeholder = { Text(strings.searchPlaceholder) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(
-                            onSearch = {
-                                keyboardController?.hide()
-                                onSearchSubmit()
-                            }
-                        ),
-                        trailingIcon = {
-                            if (uiState.searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { onSearchQueryChange("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = strings.clear)
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    Button(
-                        onClick = {
-                            keyboardController?.hide()
-                            onSearchSubmit()
-                        },
-                        enabled = uiState.searchQuery.isNotBlank() &&
-                            uiState.searchState !is SearchState.Searching
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = strings.searchBtn,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                SearchResultsSection(
-                    searchState = uiState.searchState,
-                    strings = strings,
-                    onDownloadItem = onDownloadSearchResult
                 )
             }
 
