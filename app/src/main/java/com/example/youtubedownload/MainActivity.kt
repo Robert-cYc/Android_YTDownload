@@ -70,8 +70,12 @@ class MainActivity : ComponentActivity() {
 
                 DownloadScreen(
                     uiState = uiState,
+                    onTabSelected = viewModel::onTabSelected,
                     onUrlChange = viewModel::onUrlChange,
                     onPasteText = viewModel::onPasteText,
+                    onSearchQueryChange = viewModel::onSearchQueryChange,
+                    onSearchSubmit = viewModel::searchYouTube,
+                    onDownloadSearchResult = viewModel::downloadSearchResult,
                     onFormatSelected = viewModel::onFormatSelected,
                     onVideoQualitySelected = viewModel::onVideoQualitySelected,
                     onAudioBitrateSelected = viewModel::onAudioBitrateSelected,

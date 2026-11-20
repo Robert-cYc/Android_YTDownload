@@ -56,7 +56,15 @@ data class AppStrings(
     val engineAlreadyUpToDate: String,
     val engineUpdateFinished: String,
     val updateYtDlpDesc: String,
-    val toggleThemeDesc: String
+    val toggleThemeDesc: String,
+    val tabLink: String,
+    val tabSearch: String,
+    val searchLabel: String,
+    val searchPlaceholder: String,
+    val searchBtn: String,
+    val searching: String,
+    val noSearchResults: String,
+    val tapResultToDownload: String
 ) {
     fun formatLabel(format: DownloadFormat): String = when (format) {
         DownloadFormat.MP4 -> mp4Label
@@ -123,7 +131,15 @@ data class AppStrings(
             engineAlreadyUpToDate = "yt-dlp 已是最新版本。",
             engineUpdateFinished = "yt-dlp 更新完成。",
             updateYtDlpDesc = "更新 yt-dlp",
-            toggleThemeDesc = "切換深色/淺色模式"
+            toggleThemeDesc = "切換深色/淺色模式",
+            tabLink = "貼上網址",
+            tabSearch = "搜尋 YouTube",
+            searchLabel = "搜尋 YouTube 關鍵字",
+            searchPlaceholder = "輸入歌名、影片名稱或關鍵字...",
+            searchBtn = "搜尋",
+            searching = "正在搜尋 YouTube...",
+            noSearchResults = "找不到相關影片",
+            tapResultToDownload = "點擊影片縮圖卡片即可直接下載（依下方格式設定）"
         )
 
         val EnStrings = AppStrings(
@@ -167,7 +183,15 @@ data class AppStrings(
             engineAlreadyUpToDate = "yt-dlp is already up to date.",
             engineUpdateFinished = "yt-dlp update finished.",
             updateYtDlpDesc = "Update yt-dlp",
-            toggleThemeDesc = "Toggle Dark/Light Theme"
+            toggleThemeDesc = "Toggle Dark/Light Theme",
+            tabLink = "Paste URL",
+            tabSearch = "Search YouTube",
+            searchLabel = "Search YouTube",
+            searchPlaceholder = "Enter song, video title, or keywords...",
+            searchBtn = "Search",
+            searching = "Searching YouTube...",
+            noSearchResults = "No videos found",
+            tapResultToDownload = "Tap any result card to download directly using selected format"
         )
 
         fun forLanguage(language: AppLanguage): AppStrings = when (language) {

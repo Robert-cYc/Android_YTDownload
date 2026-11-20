@@ -15,6 +15,8 @@ import com.example.youtubedownload.domain.DownloadedItem
 import com.example.youtubedownload.domain.ErrorMessageFormatter
 import com.example.youtubedownload.domain.PreviewState
 import com.example.youtubedownload.domain.QueueItem
+import com.example.youtubedownload.domain.SearchResultItem
+import com.example.youtubedownload.domain.SearchState
 import com.example.youtubedownload.domain.VideoQuality
 import com.example.youtubedownload.domain.YouTubeUrlValidator
 import com.yausername.youtubedl_android.YoutubeDL
@@ -28,7 +30,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class DownloadUiState(
+    val activeTab: Int = 0,
     val url: String = "",
+    val searchQuery: String = "",
+    val searchState: SearchState = SearchState.Idle,
     val format: DownloadFormat = DownloadFormat.MP4,
     val videoQuality: VideoQuality = VideoQuality.P1080,
     val audioBitrate: AudioBitrate = AudioBitrate.K192,
@@ -62,6 +67,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
 
     private var previewJob: Job? = null
+    private var searchJob: Job? = null
     private var lastAutoFilledClipboardUrl: String? = null
     private var lastPreviewedUrl: String? = null
 
@@ -98,6 +104,51 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         val nextDark = !_uiState.value.isDarkMode
         prefs.edit().putBoolean(KEY_DARK_MODE, nextDark).apply()
         _uiState.update { it.copy(isDarkMode = nextDark) }
+    }
+
+    fun onTabSelected(index: Int) {
+        _uiState.update { it.copy(activeTab = index) }
+    }
+
+    fun onSearchQueryChange(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun searchYouTube() {
+        val query = _uiState.value.searchQuery.trim()
+        if (query.isEmpty()) return
+
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _uiState.update { it.copy(searchState = SearchState.Searching) }
+            try {
+                val results = repository.searchYouTube(query, limit = 8)
+                _uiState.update { it.copy(searchState = SearchState.Results(results)) }
+            } catch (t: Throwable) {
+                Log.e(TAG, "YouTube search failed", t)
+                _uiState.update {
+                    it.copy(
+                        searchState = SearchState.Error(
+                            ErrorMessageFormatter.summarize(t.localizedMessage)
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun downloadSearchResult(item: SearchResultItem) {
+        val current = _uiState.value
+        val config = DownloadConfig(
+            url = item.videoUrl,
+            format = current.format,
+            videoQuality = current.videoQuality,
+            audioBitrate = current.audioBitrate,
+            embedCoverAndMetadata = current.embedCoverAndMetadata,
+            embedSubtitles = current.embedSubtitles,
+            allowPlaylist = false
+        )
+        DownloadCoordinator.enqueue(getApplication(), config, item.title)
     }
 
     fun onUrlChange(newUrl: String) {

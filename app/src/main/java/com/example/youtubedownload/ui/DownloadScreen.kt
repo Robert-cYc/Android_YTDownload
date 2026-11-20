@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -19,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddToQueue
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SystemUpdateAlt
@@ -61,6 +65,8 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -73,7 +79,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -84,6 +92,8 @@ import com.example.youtubedownload.domain.DownloadedItem
 import com.example.youtubedownload.domain.PreviewState
 import com.example.youtubedownload.domain.QueueItem
 import com.example.youtubedownload.domain.QueueItemStatus
+import com.example.youtubedownload.domain.SearchResultItem
+import com.example.youtubedownload.domain.SearchState
 import com.example.youtubedownload.domain.VideoQuality
 import com.example.youtubedownload.domain.YouTubeUrlValidator
 import java.util.Locale
@@ -92,8 +102,12 @@ import java.util.Locale
 @Composable
 fun DownloadScreen(
     uiState: DownloadUiState,
+    onTabSelected: (Int) -> Unit,
     onUrlChange: (String) -> Unit,
     onPasteText: (String) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onSearchSubmit: () -> Unit,
+    onDownloadSearchResult: (SearchResultItem) -> Unit,
     onFormatSelected: (DownloadFormat) -> Unit,
     onVideoQualitySelected: (VideoQuality) -> Unit,
     onAudioBitrateSelected: (AudioBitrate) -> Unit,
@@ -113,6 +127,7 @@ fun DownloadScreen(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val snackbarHostState = remember { SnackbarHostState() }
     val strings = AppStrings.forLanguage(uiState.language)
 
@@ -175,77 +190,141 @@ fun DownloadScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            OutlinedTextField(
-                value = uiState.url,
-                onValueChange = onUrlChange,
-                label = { Text(strings.urlLabel) },
-                placeholder = { Text("https://www.youtube.com/watch?v=...") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    Row {
-                        if (uiState.url.isNotEmpty()) {
-                            IconButton(onClick = { onUrlChange("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = strings.clear)
-                            }
-                        }
-                        IconButton(
-                            onClick = {
-                                clipboardManager.getText()?.text?.let(onPasteText)
-                            }
-                        ) {
-                            Icon(
-                                Icons.Default.ContentPaste,
-                                contentDescription = strings.pasteFromClipboard
-                            )
-                        }
-                    }
-                }
-            )
+            TabRow(selectedTabIndex = uiState.activeTab) {
+                Tab(
+                    selected = uiState.activeTab == 0,
+                    onClick = { onTabSelected(0) },
+                    text = { Text(strings.tabLink) }
+                )
+                Tab(
+                    selected = uiState.activeTab == 1,
+                    onClick = { onTabSelected(1) },
+                    text = { Text(strings.tabSearch) }
+                )
+            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilledTonalButton(
-                    onClick = {
-                        clipboardManager.getText()?.text?.let(onPasteText)
+            if (uiState.activeTab == 0) {
+                OutlinedTextField(
+                    value = uiState.url,
+                    onValueChange = onUrlChange,
+                    label = { Text(strings.urlLabel) },
+                    placeholder = { Text("https://www.youtube.com/watch?v=...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        Row {
+                            if (uiState.url.isNotEmpty()) {
+                                IconButton(onClick = { onUrlChange("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = strings.clear)
+                                }
+                            }
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.getText()?.text?.let(onPasteText)
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentPaste,
+                                    contentDescription = strings.pasteFromClipboard
+                                )
+                            }
+                        }
                     }
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentPaste,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(strings.pasteFromClipboard)
-                }
-
-                if (uiState.url.isNotEmpty()) {
-                    OutlinedButton(onClick = { onUrlChange("") }) {
+                    FilledTonalButton(
+                        onClick = {
+                            clipboardManager.getText()?.text?.let(onPasteText)
+                        }
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Clear,
+                            imageVector = Icons.Default.ContentPaste,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text(strings.clear)
+                        Text(strings.pasteFromClipboard)
+                    }
+
+                    if (uiState.url.isNotEmpty()) {
+                        OutlinedButton(onClick = { onUrlChange("") }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(strings.clear)
+                        }
                     }
                 }
+
+                Text(
+                    text = strings.shareTip,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                VideoPreviewCard(
+                    previewState = uiState.previewState,
+                    isPlaylistUrl = YouTubeUrlValidator.isPlaylistUrl(uiState.url),
+                    strings = strings
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        label = { Text(strings.searchLabel) },
+                        placeholder = { Text(strings.searchPlaceholder) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                keyboardController?.hide()
+                                onSearchSubmit()
+                            }
+                        ),
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchQueryChange("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = strings.clear)
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = {
+                            keyboardController?.hide()
+                            onSearchSubmit()
+                        },
+                        enabled = uiState.searchQuery.isNotBlank() &&
+                            uiState.searchState !is SearchState.Searching
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = strings.searchBtn,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                SearchResultsSection(
+                    searchState = uiState.searchState,
+                    strings = strings,
+                    onDownloadItem = onDownloadSearchResult
+                )
             }
-
-            Text(
-                text = strings.shareTip,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            VideoPreviewCard(
-                previewState = uiState.previewState,
-                isPlaylistUrl = YouTubeUrlValidator.isPlaylistUrl(uiState.url),
-                strings = strings
-            )
 
             Text(
                 text = strings.formatTitle,
@@ -437,6 +516,120 @@ fun DownloadScreen(
                     item.contentUri?.let { shareDownloadedFile(context, it, item.mimeType) }
                 },
                 onDeleteFile = onDeleteFile
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchResultsSection(
+    searchState: SearchState,
+    strings: AppStrings,
+    onDownloadItem: (SearchResultItem) -> Unit
+) {
+    when (searchState) {
+        SearchState.Idle -> {
+            Text(
+                text = strings.tapResultToDownload,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        SearchState.Searching -> {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text(strings.searching, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
+        is SearchState.Results -> {
+            if (searchState.items.isEmpty()) {
+                Text(
+                    text = strings.noSearchResults,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = strings.tapResultToDownload,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    searchState.items.forEach { item ->
+                        OutlinedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onDownloadItem(item) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = item.thumbnailUrl,
+                                    contentDescription = item.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(width = 112.dp, height = 64.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = item.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    val meta = buildString {
+                                        if (item.uploader.isNotBlank()) append(item.uploader)
+                                        if (item.durationSeconds > 0L) {
+                                            if (isNotEmpty()) append(" • ")
+                                            append(formatDuration(item.durationSeconds))
+                                        }
+                                    }
+                                    if (meta.isNotBlank()) {
+                                        Text(
+                                            text = meta,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        is SearchState.Error -> {
+            Text(
+                text = searchState.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
             )
         }
     }

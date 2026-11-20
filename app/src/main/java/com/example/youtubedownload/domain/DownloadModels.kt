@@ -41,6 +41,22 @@ sealed interface PreviewState {
     data class Error(val message: String) : PreviewState
 }
 
+data class SearchResultItem(
+    val id: String,
+    val title: String,
+    val uploader: String,
+    val durationSeconds: Long,
+    val thumbnailUrl: String,
+    val videoUrl: String
+)
+
+sealed interface SearchState {
+    data object Idle : SearchState
+    data object Searching : SearchState
+    data class Results(val items: List<SearchResultItem>) : SearchState
+    data class Error(val message: String) : SearchState
+}
+
 data class DownloadConfig(
     val url: String,
     val format: DownloadFormat,

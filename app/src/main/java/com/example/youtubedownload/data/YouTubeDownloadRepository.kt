@@ -14,11 +14,13 @@ import com.example.youtubedownload.domain.DownloadConfig
 import com.example.youtubedownload.domain.DownloadFormat
 import com.example.youtubedownload.domain.DownloadOptionBuilder
 import com.example.youtubedownload.domain.DownloadedItem
+import com.example.youtubedownload.domain.SearchResultItem
 import com.example.youtubedownload.domain.VideoPreview
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 
@@ -54,12 +56,66 @@ class YouTubeDownloadRepository(private val context: Context) {
             addOption("--force-ipv4")
         }
         val info = YoutubeDL.getInstance().getInfo(request)
-        VideoPreview(
+        return VideoPreview(
             title = info.title ?: "YouTube Video",
             uploader = info.uploader ?: "",
             durationSeconds = info.duration.toLong(),
             thumbnailUrl = info.thumbnail
         )
+    }
+
+    suspend fun searchYouTube(query: String, limit: Int = 8): List<SearchResultItem> =
+        withContext(Dispatchers.IO) {
+            ensureInitialized()
+            PythonDnsPatchInstaller.refreshHostCache(context)
+
+            val request = YoutubeDLRequest("ytsearch$limit:${query.trim()}").apply {
+                addOption("--flat-playlist")
+                addOption("--dump-single-json")
+                addOption("--no-warnings")
+                addOption("--force-ipv4")
+            }
+            val response = YoutubeDL.getInstance().execute(request, null)
+            parseSearchResults(response.out.orEmpty())
+        }
+
+    private fun parseSearchResults(rawOut: String): List<SearchResultItem> {
+        val jsonLine = rawOut.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("{") && it.contains("\"entries\"") }
+            ?: return emptyList()
+
+        val root = JSONObject(jsonLine)
+        val entries = root.optJSONArray("entries") ?: return emptyList()
+        val results = mutableListOf<SearchResultItem>()
+
+        for (i in 0 until entries.length()) {
+            val obj = entries.optJSONObject(i) ?: continue
+            val id = obj.optString("id").takeIf { it.isNotBlank() } ?: continue
+            val title = obj.optString("title").ifBlank { "YouTube Video" }
+            val uploader = obj.optString("uploader").ifBlank {
+                obj.optString("channel").ifBlank { "" }
+            }
+            val duration = obj.optDouble("duration", 0.0).toLong().coerceAtLeast(0L)
+            val thumb = obj.optString("thumbnail").takeIf { it.isNotBlank() }
+                ?: obj.optJSONArray("thumbnails")?.let { arr ->
+                    if (arr.length() > 0) arr.optJSONObject(arr.length() - 1)?.optString("url") else null
+                }?.takeIf { it.isNotBlank() }
+                ?: "https://i.ytimg.com/vi/$id/hqdefault.jpg"
+            val videoUrl = obj.optString("webpage_url").takeIf { it.startsWith("http") }
+                ?: obj.optString("url").takeIf { it.startsWith("http") }
+                ?: "https://www.youtube.com/watch?v=$id"
+
+            results += SearchResultItem(
+                id = id,
+                title = title,
+                uploader = uploader,
+                durationSeconds = duration,
+                thumbnailUrl = thumb,
+                videoUrl = videoUrl
+            )
+        }
+        return results
     }
 
     suspend fun download(
