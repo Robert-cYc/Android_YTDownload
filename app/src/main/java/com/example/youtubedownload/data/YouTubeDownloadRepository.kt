@@ -56,7 +56,7 @@ class YouTubeDownloadRepository(private val context: Context) {
             addOption("--force-ipv4")
         }
         val info = YoutubeDL.getInstance().getInfo(request)
-        return VideoPreview(
+        VideoPreview(
             title = info.title ?: "YouTube Video",
             uploader = info.uploader ?: "",
             durationSeconds = info.duration.toLong(),
