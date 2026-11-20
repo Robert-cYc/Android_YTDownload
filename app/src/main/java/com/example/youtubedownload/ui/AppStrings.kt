@@ -64,7 +64,10 @@ data class AppStrings(
     val searchBtn: String,
     val searching: String,
     val noSearchResults: String,
-    val tapResultToDownload: String
+    val tapResultToDownload: String,
+    val tabAuthor: String,
+    val authorTitle: String,
+    val authorCredit: String
 ) {
     fun formatLabel(format: DownloadFormat): String = when (format) {
         DownloadFormat.MP4 -> mp4Label
@@ -139,7 +142,10 @@ data class AppStrings(
             searchBtn = "搜尋",
             searching = "正在搜尋 YouTube...",
             noSearchResults = "找不到相關影片",
-            tapResultToDownload = "點擊影片縮圖卡片即可直接下載（依下方格式設定）"
+            tapResultToDownload = "點擊影片縮圖卡片即可直接下載（依下方格式設定）",
+            tabAuthor = "作者",
+            authorTitle = "關於作者",
+            authorCredit = "AI + Robert 創作"
         )
 
         val EnStrings = AppStrings(
@@ -191,7 +197,10 @@ data class AppStrings(
             searchBtn = "Search",
             searching = "Searching YouTube...",
             noSearchResults = "No videos found",
-            tapResultToDownload = "Tap any result card to download directly using selected format"
+            tapResultToDownload = "Tap any result card to download directly using selected format",
+            tabAuthor = "Author",
+            authorTitle = "About Author",
+            authorCredit = "Created by AI + Robert"
         )
 
         fun forLanguage(language: AppLanguage): AppStrings = when (language) {

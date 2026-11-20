@@ -34,10 +34,12 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Search
@@ -201,9 +203,15 @@ fun DownloadScreen(
                     onClick = { onTabSelected(1) },
                     text = { Text(strings.tabLink) }
                 )
+                Tab(
+                    selected = uiState.activeTab == 2,
+                    onClick = { onTabSelected(2) },
+                    text = { Text(strings.tabAuthor) }
+                )
             }
 
-            if (uiState.activeTab == 0) {
+            when (uiState.activeTab) {
+                0 -> {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -252,7 +260,8 @@ fun DownloadScreen(
                     strings = strings,
                     onDownloadItem = onDownloadSearchResult
                 )
-            } else {
+                }
+                1 -> {
                 OutlinedTextField(
                     value = uiState.url,
                     onValueChange = onUrlChange,
@@ -324,8 +333,13 @@ fun DownloadScreen(
                     isPlaylistUrl = YouTubeUrlValidator.isPlaylistUrl(uiState.url),
                     strings = strings
                 )
+                }
+                2 -> {
+                    AuthorSection(strings = strings, context = context)
+                }
             }
 
+            if (uiState.activeTab != 2) {
             Text(
                 text = strings.formatTitle,
                 style = MaterialTheme.typography.titleSmall,
@@ -517,6 +531,57 @@ fun DownloadScreen(
                 },
                 onDeleteFile = onDeleteFile
             )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthorSection(strings: AppStrings, context: Context) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = strings.authorTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Text(
+                text = strings.authorCredit,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+
+            FilledTonalButton(
+                onClick = {
+                    val intent = Intent(Intent.ACTION_SENDTO).apply {
+                        data = Uri.parse("mailto:robertcyc@gmail.com")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    runCatching { context.startActivity(intent) }
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Email,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("robertcyc@gmail.com")
+            }
         }
     }
 }
