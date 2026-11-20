@@ -14,6 +14,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
@@ -31,14 +33,38 @@ class MainActivity : ComponentActivity() {
         handleShareIntent(intent)
 
         setContent {
-            MaterialTheme {
-                val uiState by viewModel.uiState.collectAsState()
+            val uiState by viewModel.uiState.collectAsState()
+            val colorScheme = if (uiState.isDarkMode) darkColorScheme() else lightColorScheme()
+
+            MaterialTheme(colorScheme = colorScheme) {
+                var pendingClearAfterEnqueue = false
+
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestPermission()
+                ) { _ ->
+                    viewModel.startOrEnqueueDownload(clearUrlAfterEnqueue = pendingClearAfterEnqueue)
+                }
 
                 val storagePermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestPermission()
                 ) { granted ->
                     if (granted) {
-                        viewModel.startDownload()
+                        viewModel.startOrEnqueueDownload(clearUrlAfterEnqueue = pendingClearAfterEnqueue)
+                    }
+                }
+
+                fun launchWithPermissions(clearAfterEnqueue: Boolean) {
+                    pendingClearAfterEnqueue = clearAfterEnqueue
+                    when {
+                        needsLegacyStoragePermission() -> {
+                            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        }
+                        needsNotificationPermission() -> {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        else -> {
+                            viewModel.startOrEnqueueDownload(clearUrlAfterEnqueue = clearAfterEnqueue)
+                        }
                     }
                 }
 
@@ -49,16 +75,18 @@ class MainActivity : ComponentActivity() {
                     onFormatSelected = viewModel::onFormatSelected,
                     onVideoQualitySelected = viewModel::onVideoQualitySelected,
                     onAudioBitrateSelected = viewModel::onAudioBitrateSelected,
-                    onStartDownload = {
-                        if (needsLegacyStoragePermission()) {
-                            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                        } else {
-                            viewModel.startDownload()
-                        }
-                    },
+                    onToggleEmbedCover = viewModel::onToggleEmbedCover,
+                    onToggleEmbedSubtitles = viewModel::onToggleEmbedSubtitles,
+                    onToggleAllowPlaylist = viewModel::onToggleAllowPlaylist,
+                    onStartDownload = { launchWithPermissions(clearAfterEnqueue = false) },
+                    onAddToQueue = { launchWithPermissions(clearAfterEnqueue = true) },
+                    onRemoveQueueItem = viewModel::removePendingQueueItem,
+                    onClearFinishedQueue = viewModel::clearFinishedQueue,
                     onCancelDownload = viewModel::cancelDownload,
+                    onDeleteFile = viewModel::deleteDownloadedFile,
                     onUpdateEngine = viewModel::updateEngine,
                     onToggleLanguage = viewModel::toggleLanguage,
+                    onToggleDarkMode = viewModel::toggleDarkMode,
                     onDismissEngineMessage = viewModel::dismissEngineMessage
                 )
             }
@@ -95,6 +123,14 @@ class MainActivity : ComponentActivity() {
         return ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
+        ) != PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun needsNotificationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
         ) != PackageManager.PERMISSION_GRANTED
     }
 }

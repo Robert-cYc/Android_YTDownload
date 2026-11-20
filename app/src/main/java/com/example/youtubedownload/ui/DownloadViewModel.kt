@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.youtubedownload.data.DownloadCoordinator
 import com.example.youtubedownload.data.YouTubeDownloadRepository
 import com.example.youtubedownload.domain.AudioBitrate
 import com.example.youtubedownload.domain.DownloadConfig
@@ -12,33 +13,39 @@ import com.example.youtubedownload.domain.DownloadFormat
 import com.example.youtubedownload.domain.DownloadStatus
 import com.example.youtubedownload.domain.DownloadedItem
 import com.example.youtubedownload.domain.ErrorMessageFormatter
+import com.example.youtubedownload.domain.PreviewState
+import com.example.youtubedownload.domain.QueueItem
 import com.example.youtubedownload.domain.VideoQuality
 import com.example.youtubedownload.domain.YouTubeUrlValidator
 import com.yausername.youtubedl_android.YoutubeDL
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 data class DownloadUiState(
     val url: String = "",
     val format: DownloadFormat = DownloadFormat.MP4,
     val videoQuality: VideoQuality = VideoQuality.P1080,
     val audioBitrate: AudioBitrate = AudioBitrate.K192,
+    val embedCoverAndMetadata: Boolean = true,
+    val embedSubtitles: Boolean = false,
+    val allowPlaylist: Boolean = false,
+    val previewState: PreviewState = PreviewState.Idle,
     val status: DownloadStatus = DownloadStatus.Idle,
+    val isDownloading: Boolean = false,
+    val queue: List<QueueItem> = emptyList(),
     val isUpdatingEngine: Boolean = false,
     val engineUpdateMessage: String? = null,
     val downloadFolderPath: String = "",
     val downloadedFiles: List<DownloadedItem> = emptyList(),
-    val language: AppLanguage = AppLanguage.ZH_TW
-) {
-    val isDownloading: Boolean
-        get() = status is DownloadStatus.Initializing || status is DownloadStatus.Downloading
-}
+    val language: AppLanguage = AppLanguage.ZH_TW,
+    val isDarkMode: Boolean = false
+)
 
 class DownloadViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -48,17 +55,37 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
     private val _uiState = MutableStateFlow(
         DownloadUiState(
             downloadFolderPath = repository.getDownloadFolderDisplayPath(),
-            language = AppLanguage.fromCode(prefs.getString(KEY_LANGUAGE, AppLanguage.ZH_TW.code))
+            language = AppLanguage.fromCode(prefs.getString(KEY_LANGUAGE, AppLanguage.ZH_TW.code)),
+            isDarkMode = prefs.getBoolean(KEY_DARK_MODE, false)
         )
     )
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
 
-    private var activeJob: Job? = null
-    private var activeProcessId: String? = null
+    private var previewJob: Job? = null
     private var lastAutoFilledClipboardUrl: String? = null
+    private var lastPreviewedUrl: String? = null
 
     init {
-        refreshDownloadedFiles()
+        DownloadCoordinator.refreshFiles(application)
+        viewModelScope.launch {
+            DownloadCoordinator.state.collectLatest { coord ->
+                _uiState.update { current ->
+                    val resolvedStatus = if (current.status is DownloadStatus.Error &&
+                        coord.activeStatus == DownloadStatus.Idle
+                    ) {
+                        current.status
+                    } else {
+                        coord.activeStatus
+                    }
+                    current.copy(
+                        status = resolvedStatus,
+                        isDownloading = coord.isRunning,
+                        queue = coord.queue,
+                        downloadedFiles = coord.downloadedFiles
+                    )
+                }
+            }
+        }
     }
 
     fun toggleLanguage() {
@@ -67,15 +94,15 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(language = nextLang) }
     }
 
-    fun refreshDownloadedFiles() {
-        viewModelScope.launch {
-            val files = repository.listDownloadedFiles()
-            _uiState.update { it.copy(downloadedFiles = files) }
-        }
+    fun toggleDarkMode() {
+        val nextDark = !_uiState.value.isDarkMode
+        prefs.edit().putBoolean(KEY_DARK_MODE, nextDark).apply()
+        _uiState.update { it.copy(isDarkMode = nextDark) }
     }
 
     fun onUrlChange(newUrl: String) {
         _uiState.update { it.copy(url = newUrl) }
+        schedulePreviewFetch(newUrl, debounceMs = 500L)
     }
 
     fun onPasteText(rawText: String) {
@@ -83,6 +110,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         if (extracted.isNotEmpty()) {
             lastAutoFilledClipboardUrl = extracted
             _uiState.update { it.copy(url = extracted, status = DownloadStatus.Idle) }
+            schedulePreviewFetch(extracted, debounceMs = 0L)
         }
     }
 
@@ -90,6 +118,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         if (_uiState.value.url.isBlank() && url != lastAutoFilledClipboardUrl) {
             lastAutoFilledClipboardUrl = url
             _uiState.update { it.copy(url = url, status = DownloadStatus.Idle) }
+            schedulePreviewFetch(url, debounceMs = 0L)
         }
     }
 
@@ -98,6 +127,35 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         if (extracted.isNotEmpty()) {
             lastAutoFilledClipboardUrl = extracted
             _uiState.update { it.copy(url = extracted, status = DownloadStatus.Idle) }
+            schedulePreviewFetch(extracted, debounceMs = 0L)
+        }
+    }
+
+    private fun schedulePreviewFetch(rawUrl: String, debounceMs: Long) {
+        val trimmed = rawUrl.trim()
+        if (!YouTubeUrlValidator.isValidYouTubeUrl(trimmed)) {
+            previewJob?.cancel()
+            lastPreviewedUrl = null
+            _uiState.update { it.copy(previewState = PreviewState.Idle) }
+            return
+        }
+        if (trimmed == lastPreviewedUrl && _uiState.value.previewState is PreviewState.Loaded) {
+            return
+        }
+
+        previewJob?.cancel()
+        previewJob = viewModelScope.launch {
+            if (debounceMs > 0L) delay(debounceMs)
+            lastPreviewedUrl = trimmed
+            _uiState.update { it.copy(previewState = PreviewState.Loading) }
+            try {
+                val preview = repository.fetchVideoInfo(trimmed)
+                _uiState.update { it.copy(previewState = PreviewState.Loaded(preview)) }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Preview fetch failed", t)
+                val strings = AppStrings.forLanguage(_uiState.value.language)
+                _uiState.update { it.copy(previewState = PreviewState.Error(strings.previewUnavailable)) }
+            }
         }
     }
 
@@ -113,14 +171,24 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(audioBitrate = bitrate) }
     }
 
+    fun onToggleEmbedCover() {
+        _uiState.update { it.copy(embedCoverAndMetadata = !it.embedCoverAndMetadata) }
+    }
+
+    fun onToggleEmbedSubtitles() {
+        _uiState.update { it.copy(embedSubtitles = !it.embedSubtitles) }
+    }
+
+    fun onToggleAllowPlaylist() {
+        _uiState.update { it.copy(allowPlaylist = !it.allowPlaylist) }
+    }
+
     fun dismissEngineMessage() {
         _uiState.update { it.copy(engineUpdateMessage = null) }
     }
 
-    fun startDownload() {
+    fun startOrEnqueueDownload(clearUrlAfterEnqueue: Boolean = false) {
         val current = _uiState.value
-        if (current.isDownloading) return
-
         val strings = AppStrings.forLanguage(current.language)
         val trimmedUrl = current.url.trim()
         if (!YouTubeUrlValidator.isValidYouTubeUrl(trimmedUrl)) {
@@ -130,73 +198,39 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
-        val processId = "yt-${UUID.randomUUID()}"
-        activeProcessId = processId
         val config = DownloadConfig(
             url = trimmedUrl,
             format = current.format,
             videoQuality = current.videoQuality,
-            audioBitrate = current.audioBitrate
+            audioBitrate = current.audioBitrate,
+            embedCoverAndMetadata = current.embedCoverAndMetadata,
+            embedSubtitles = current.embedSubtitles,
+            allowPlaylist = current.allowPlaylist
         )
+        val previewTitle = (current.previewState as? PreviewState.Loaded)?.preview?.title ?: trimmedUrl
 
-        _uiState.update { it.copy(status = DownloadStatus.Initializing) }
+        DownloadCoordinator.enqueue(getApplication(), config, previewTitle)
 
-        activeJob = viewModelScope.launch {
-            try {
-                val result = repository.download(config, processId) { progress, etaSeconds, line ->
-                    _uiState.update { state ->
-                        if (state.status is DownloadStatus.Cancelled) {
-                            state
-                        } else {
-                            state.copy(
-                                status = DownloadStatus.Downloading(
-                                    progress = progress,
-                                    etaSeconds = etaSeconds,
-                                    statusLine = line
-                                )
-                            )
-                        }
-                    }
-                }
-                val files = repository.listDownloadedFiles()
-                _uiState.update {
-                    it.copy(
-                        status = DownloadStatus.Completed(
-                            fileName = result.fileName,
-                            savedLocation = result.savedLocation,
-                            contentUri = result.contentUri,
-                            mimeType = result.mimeType
-                        ),
-                        downloadedFiles = files
-                    )
-                }
-            } catch (_: YoutubeDL.CanceledException) {
-                _uiState.update { it.copy(status = DownloadStatus.Cancelled) }
-            } catch (_: CancellationException) {
-                _uiState.update { it.copy(status = DownloadStatus.Cancelled) }
-            } catch (t: Throwable) {
-                Log.e(TAG, "Download failed", t)
-                _uiState.update {
-                    it.copy(
-                        status = DownloadStatus.Error(
-                            ErrorMessageFormatter.summarize(t.localizedMessage)
-                        )
-                    )
-                }
-            } finally {
-                activeProcessId = null
-                activeJob = null
-            }
+        if (clearUrlAfterEnqueue) {
+            lastPreviewedUrl = null
+            _uiState.update { it.copy(url = "", previewState = PreviewState.Idle) }
         }
     }
 
+    fun removePendingQueueItem(itemId: String) {
+        DownloadCoordinator.removePendingItem(itemId)
+    }
+
+    fun clearFinishedQueue() {
+        DownloadCoordinator.clearFinishedQueue()
+    }
+
     fun cancelDownload() {
-        val processId = activeProcessId
-        if (processId != null) {
-            repository.cancel(processId)
-        }
-        activeJob?.cancel()
-        _uiState.update { it.copy(status = DownloadStatus.Cancelled) }
+        DownloadCoordinator.cancelActive(getApplication())
+    }
+
+    fun deleteDownloadedFile(item: DownloadedItem) {
+        DownloadCoordinator.deleteFile(getApplication(), item)
     }
 
     fun updateEngine() {
@@ -231,5 +265,6 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         private const val TAG = "DownloadViewModel"
         private const val PREFS_NAME = "yt_downloader_prefs"
         private const val KEY_LANGUAGE = "app_language"
+        private const val KEY_DARK_MODE = "app_dark_mode"
     }
 }

@@ -76,6 +76,7 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
 
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.coil.compose)
     implementation(libs.youtubedl.library)
     implementation(libs.youtubedl.ffmpeg)
 

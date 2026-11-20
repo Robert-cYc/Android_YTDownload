@@ -106,4 +106,31 @@ class DownloadOptionBuilderTest {
         assertEquals("YouTube 下載器", AppStrings.forLanguage(AppLanguage.ZH_TW).appTitle)
         assertEquals("YouTube Downloader", AppStrings.forLanguage(AppLanguage.EN).appTitle)
     }
+
+    @Test
+    fun `detects playlist URLs and builds playlist, subtitle, and cover options`() {
+        assertTrue(YouTubeUrlValidator.isPlaylistUrl("https://www.youtube.com/playlist?list=PL123"))
+        assertTrue(YouTubeUrlValidator.isPlaylistUrl("https://www.youtube.com/watch?v=abc&list=PL123"))
+        assertFalse(YouTubeUrlValidator.isPlaylistUrl("https://youtu.be/dQw4w9WgXcQ"))
+
+        val mp4Config = DownloadConfig(
+            url = "https://www.youtube.com/playlist?list=PL123",
+            format = DownloadFormat.MP4,
+            embedSubtitles = true,
+            allowPlaylist = true
+        )
+        val mp4Options = DownloadOptionBuilder.buildOptions(mp4Config, "/tmp/%(title)s.%(ext)s")
+        assertTrue(mp4Options.contains("--yes-playlist" to null))
+        assertTrue(mp4Options.contains("--embed-subs" to null))
+        assertTrue(mp4Options.contains("--write-auto-subs" to null))
+
+        val mp3Config = DownloadConfig(
+            url = "https://youtu.be/dQw4w9WgXcQ",
+            format = DownloadFormat.MP3,
+            embedCoverAndMetadata = true
+        )
+        val mp3Options = DownloadOptionBuilder.buildOptions(mp3Config, "/tmp/%(title)s.%(ext)s")
+        assertTrue(mp3Options.contains("--embed-thumbnail" to null))
+        assertTrue(mp3Options.contains("--add-metadata" to null))
+    }
 }

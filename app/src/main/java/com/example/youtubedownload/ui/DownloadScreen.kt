@@ -18,18 +18,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddToQueue
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.Button
@@ -60,16 +69,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.youtubedownload.domain.AudioBitrate
 import com.example.youtubedownload.domain.DownloadFormat
 import com.example.youtubedownload.domain.DownloadStatus
 import com.example.youtubedownload.domain.DownloadedItem
+import com.example.youtubedownload.domain.PreviewState
+import com.example.youtubedownload.domain.QueueItem
+import com.example.youtubedownload.domain.QueueItemStatus
 import com.example.youtubedownload.domain.VideoQuality
+import com.example.youtubedownload.domain.YouTubeUrlValidator
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -81,10 +97,18 @@ fun DownloadScreen(
     onFormatSelected: (DownloadFormat) -> Unit,
     onVideoQualitySelected: (VideoQuality) -> Unit,
     onAudioBitrateSelected: (AudioBitrate) -> Unit,
+    onToggleEmbedCover: () -> Unit,
+    onToggleEmbedSubtitles: () -> Unit,
+    onToggleAllowPlaylist: () -> Unit,
     onStartDownload: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onRemoveQueueItem: (String) -> Unit,
+    onClearFinishedQueue: () -> Unit,
     onCancelDownload: () -> Unit,
+    onDeleteFile: (DownloadedItem) -> Unit,
     onUpdateEngine: () -> Unit,
     onToggleLanguage: () -> Unit,
+    onToggleDarkMode: () -> Unit,
     onDismissEngineMessage: () -> Unit
 ) {
     val context = LocalContext.current
@@ -103,6 +127,16 @@ fun DownloadScreen(
             TopAppBar(
                 title = { Text(strings.appTitle) },
                 actions = {
+                    IconButton(onClick = onToggleDarkMode) {
+                        Icon(
+                            imageVector = if (uiState.isDarkMode) {
+                                Icons.Default.LightMode
+                            } else {
+                                Icons.Default.DarkMode
+                            },
+                            contentDescription = strings.toggleThemeDesc
+                        )
+                    }
                     TextButton(onClick = onToggleLanguage) {
                         Icon(
                             imageVector = Icons.Default.Language,
@@ -139,7 +173,7 @@ fun DownloadScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             OutlinedTextField(
                 value = uiState.url,
@@ -147,61 +181,56 @@ fun DownloadScreen(
                 label = { Text(strings.urlLabel) },
                 placeholder = { Text("https://www.youtube.com/watch?v=...") },
                 singleLine = true,
-                enabled = !uiState.isDownloading,
                 modifier = Modifier.fillMaxWidth(),
                 trailingIcon = {
                     Row {
-                        if (uiState.url.isNotEmpty() && !uiState.isDownloading) {
+                        if (uiState.url.isNotEmpty()) {
                             IconButton(onClick = { onUrlChange("") }) {
                                 Icon(Icons.Default.Clear, contentDescription = strings.clear)
                             }
                         }
-                        if (!uiState.isDownloading) {
-                            IconButton(
-                                onClick = {
-                                    clipboardManager.getText()?.text?.let(onPasteText)
-                                }
-                            ) {
-                                Icon(
-                                    Icons.Default.ContentPaste,
-                                    contentDescription = strings.pasteFromClipboard
-                                )
+                        IconButton(
+                            onClick = {
+                                clipboardManager.getText()?.text?.let(onPasteText)
                             }
+                        ) {
+                            Icon(
+                                Icons.Default.ContentPaste,
+                                contentDescription = strings.pasteFromClipboard
+                            )
                         }
                     }
                 }
             )
 
-            if (!uiState.isDownloading) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilledTonalButton(
+                    onClick = {
+                        clipboardManager.getText()?.text?.let(onPasteText)
+                    }
                 ) {
-                    FilledTonalButton(
-                        onClick = {
-                            clipboardManager.getText()?.text?.let(onPasteText)
-                        }
-                    ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentPaste,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(strings.pasteFromClipboard)
+                }
+
+                if (uiState.url.isNotEmpty()) {
+                    OutlinedButton(onClick = { onUrlChange("") }) {
                         Icon(
-                            imageVector = Icons.Default.ContentPaste,
+                            imageVector = Icons.Default.Clear,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text(strings.pasteFromClipboard)
-                    }
-
-                    if (uiState.url.isNotEmpty()) {
-                        OutlinedButton(onClick = { onUrlChange("") }) {
-                            Icon(
-                                imageVector = Icons.Default.Clear,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(strings.clear)
-                        }
+                        Text(strings.clear)
                     }
                 }
             }
@@ -210,6 +239,12 @@ fun DownloadScreen(
                 text = strings.shareTip,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            VideoPreviewCard(
+                previewState = uiState.previewState,
+                isPlaylistUrl = YouTubeUrlValidator.isPlaylistUrl(uiState.url),
+                strings = strings
             )
 
             Text(
@@ -223,7 +258,6 @@ fun DownloadScreen(
                     SegmentedButton(
                         selected = uiState.format == format,
                         onClick = { onFormatSelected(format) },
-                        enabled = !uiState.isDownloading,
                         shape = SegmentedButtonDefaults.itemShape(
                             index = index,
                             count = DownloadFormat.entries.size
@@ -258,7 +292,6 @@ fun DownloadScreen(
                         FilterChip(
                             selected = uiState.videoQuality == quality,
                             onClick = { onVideoQualitySelected(quality) },
-                            enabled = !uiState.isDownloading,
                             label = { Text(strings.qualityLabel(quality)) }
                         )
                     }
@@ -277,20 +310,61 @@ fun DownloadScreen(
                         FilterChip(
                             selected = uiState.audioBitrate == bitrate,
                             onClick = { onAudioBitrateSelected(bitrate) },
-                            enabled = !uiState.isDownloading,
                             label = { Text(bitrate.label) }
                         )
                     }
                 }
             }
 
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (uiState.format == DownloadFormat.MP3) {
+                    FilterChip(
+                        selected = uiState.embedCoverAndMetadata,
+                        onClick = onToggleEmbedCover,
+                        leadingIcon = if (uiState.embedCoverAndMetadata) {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        } else null,
+                        label = { Text(strings.embedCoverLabel) }
+                    )
+                } else {
+                    FilterChip(
+                        selected = uiState.embedSubtitles,
+                        onClick = onToggleEmbedSubtitles,
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Subtitles,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        label = { Text(strings.embedSubtitlesLabel) }
+                    )
+                }
+
+                FilterChip(
+                    selected = uiState.allowPlaylist,
+                    onClick = onToggleAllowPlaylist,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.PlaylistPlay,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    label = { Text(strings.allowPlaylistLabel) }
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
                     onClick = onStartDownload,
-                    enabled = !uiState.isDownloading && uiState.url.isNotBlank(),
+                    enabled = uiState.url.isNotBlank(),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
@@ -298,17 +372,30 @@ fun DownloadScreen(
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         if (uiState.isDownloading) {
-                            strings.downloadingBtn
+                            strings.addToQueue
                         } else {
                             strings.downloadButtonText(uiState.format)
                         }
                     )
                 }
 
-                if (uiState.isDownloading) {
+                if (!uiState.isDownloading) {
+                    FilledTonalButton(
+                        onClick = onAddToQueue,
+                        enabled = uiState.url.isNotBlank()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddToQueue,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(strings.addToQueue)
+                    }
+                } else {
                     OutlinedButton(onClick = onCancelDownload) {
                         Icon(
                             imageVector = Icons.Default.Close,
@@ -329,6 +416,15 @@ fun DownloadScreen(
                 onUpdateEngine = onUpdateEngine
             )
 
+            if (uiState.queue.isNotEmpty()) {
+                QueueCard(
+                    queue = uiState.queue,
+                    strings = strings,
+                    onRemoveItem = onRemoveQueueItem,
+                    onClearFinished = onClearFinishedQueue
+                )
+            }
+
             DownloadFolderCard(
                 folderPath = uiState.downloadFolderPath,
                 files = uiState.downloadedFiles,
@@ -336,8 +432,193 @@ fun DownloadScreen(
                 onOpenFolder = { openDownloadsFolder(context) },
                 onOpenFile = { item ->
                     item.contentUri?.let { openDownloadedFile(context, it, item.mimeType) }
-                }
+                },
+                onShareFile = { item ->
+                    item.contentUri?.let { shareDownloadedFile(context, it, item.mimeType) }
+                },
+                onDeleteFile = onDeleteFile
             )
+        }
+    }
+}
+
+@Composable
+private fun VideoPreviewCard(
+    previewState: PreviewState,
+    isPlaylistUrl: Boolean,
+    strings: AppStrings
+) {
+    when (previewState) {
+        PreviewState.Idle -> Unit
+
+        PreviewState.Loading -> {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = strings.loadingPreview,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
+        is PreviewState.Loaded -> {
+            val preview = previewState.preview
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!preview.thumbnailUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = preview.thumbnailUrl,
+                            contentDescription = preview.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(width = 112.dp, height = 64.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = preview.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val meta = buildString {
+                            if (preview.uploader.isNotBlank()) append(preview.uploader)
+                            if (preview.durationSeconds > 0L) {
+                                if (isNotEmpty()) append(" • ")
+                                append(formatDuration(preview.durationSeconds))
+                            }
+                        }
+                        if (meta.isNotBlank()) {
+                            Text(
+                                text = meta,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (isPlaylistUrl) {
+                            Text(
+                                text = strings.playlistDetectedHint,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        is PreviewState.Error -> {
+            Text(
+                text = previewState.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun QueueCard(
+    queue: List<QueueItem>,
+    strings: AppStrings,
+    onRemoveItem: (String) -> Unit,
+    onClearFinished: () -> Unit
+) {
+    val hasFinished = queue.any {
+        it.status is QueueItemStatus.Completed ||
+            it.status is QueueItemStatus.Cancelled ||
+            it.status is QueueItemStatus.Error
+    }
+
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${strings.queueTitle} (${queue.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (hasFinished) {
+                    TextButton(onClick = onClearFinished) {
+                        Text(strings.clearFinished)
+                    }
+                }
+            }
+
+            queue.forEach { item ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val statusLabel = when (val st = item.status) {
+                            QueueItemStatus.Pending -> "${item.config.format.name} • ${strings.pendingStatus}"
+                            is QueueItemStatus.Downloading -> {
+                                val pct = if (st.progress >= 0f) "${st.progress.toInt()}%" else strings.processing
+                                "${item.config.format.name} • $pct"
+                            }
+                            is QueueItemStatus.Completed -> "${item.config.format.name} • ${strings.filesSavedCount(st.fileCount)}"
+                            QueueItemStatus.Cancelled -> strings.downloadCancelled
+                            is QueueItemStatus.Error -> st.message
+                        }
+                        Text(
+                            text = statusLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (item.status is QueueItemStatus.Error) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                    if (item.status is QueueItemStatus.Pending) {
+                        IconButton(onClick = { onRemoveItem(item.id) }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = strings.cancelBtn,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -436,7 +717,11 @@ private fun StatusCard(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = status.fileName,
+                                text = if (status.fileCount > 1) {
+                                    "${status.fileName} (${strings.filesSavedCount(status.fileCount)})"
+                                } else {
+                                    status.fileName
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium
                             )
@@ -535,7 +820,9 @@ private fun DownloadFolderCard(
     files: List<DownloadedItem>,
     strings: AppStrings,
     onOpenFolder: () -> Unit,
-    onOpenFile: (DownloadedItem) -> Unit
+    onOpenFile: (DownloadedItem) -> Unit,
+    onShareFile: (DownloadedItem) -> Unit,
+    onDeleteFile: (DownloadedItem) -> Unit
 ) {
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -576,7 +863,7 @@ private fun DownloadFolderCard(
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
-                files.take(10).forEach { item ->
+                files.take(15).forEach { item ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -611,15 +898,47 @@ private fun DownloadFolderCard(
                                 )
                             }
                         }
-                        if (item.contentUri != null) {
-                            TextButton(onClick = { onOpenFile(item) }) {
-                                Text(strings.openShort)
+                        Row {
+                            if (item.contentUri != null) {
+                                IconButton(onClick = { onOpenFile(item) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = strings.openShort,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                IconButton(onClick = { onShareFile(item) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Share,
+                                        contentDescription = strings.shareShort,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { onDeleteFile(item) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = strings.deleteShort,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private fun formatDuration(totalSeconds: Long): String {
+    val hrs = totalSeconds / 3600
+    val mins = (totalSeconds % 3600) / 60
+    val secs = totalSeconds % 60
+    return if (hrs > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hrs, mins, secs)
+    } else {
+        String.format(Locale.US, "%d:%02d", mins, secs)
     }
 }
 
@@ -658,5 +977,19 @@ private fun openDownloadedFile(context: Context, uriString: String, mimeType: St
         context.startActivity(Intent.createChooser(intent, "Open with"))
     } catch (_: Throwable) {
         openDownloadsFolder(context)
+    }
+}
+
+private fun shareDownloadedFile(context: Context, uriString: String, mimeType: String) {
+    try {
+        val uri = Uri.parse(uriString)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share"))
+    } catch (_: Throwable) {
+        Toast.makeText(context, "Unable to share file", Toast.LENGTH_SHORT).show()
     }
 }

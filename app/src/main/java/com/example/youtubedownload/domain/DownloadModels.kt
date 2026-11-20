@@ -27,11 +27,28 @@ enum class AudioBitrate(val label: String, val ffmpegArg: String) {
     K128("128 kbps", "128K")
 }
 
+data class VideoPreview(
+    val title: String,
+    val uploader: String,
+    val durationSeconds: Long,
+    val thumbnailUrl: String?
+)
+
+sealed interface PreviewState {
+    data object Idle : PreviewState
+    data object Loading : PreviewState
+    data class Loaded(val preview: VideoPreview) : PreviewState
+    data class Error(val message: String) : PreviewState
+}
+
 data class DownloadConfig(
     val url: String,
     val format: DownloadFormat,
     val videoQuality: VideoQuality = VideoQuality.P1080,
-    val audioBitrate: AudioBitrate = AudioBitrate.K192
+    val audioBitrate: AudioBitrate = AudioBitrate.K192,
+    val embedCoverAndMetadata: Boolean = true,
+    val embedSubtitles: Boolean = false,
+    val allowPlaylist: Boolean = false
 )
 
 data class DownloadedItem(
@@ -40,6 +57,25 @@ data class DownloadedItem(
     val sizeBytes: Long,
     val contentUri: String?,
     val mimeType: String
+)
+
+sealed interface QueueItemStatus {
+    data object Pending : QueueItemStatus
+    data class Downloading(
+        val progress: Float,
+        val etaSeconds: Long,
+        val statusLine: String
+    ) : QueueItemStatus
+    data class Completed(val fileCount: Int) : QueueItemStatus
+    data object Cancelled : QueueItemStatus
+    data class Error(val message: String) : QueueItemStatus
+}
+
+data class QueueItem(
+    val id: String,
+    val config: DownloadConfig,
+    val title: String,
+    val status: QueueItemStatus = QueueItemStatus.Pending
 )
 
 sealed interface DownloadStatus {
@@ -54,7 +90,8 @@ sealed interface DownloadStatus {
         val fileName: String,
         val savedLocation: String,
         val contentUri: String?,
-        val mimeType: String
+        val mimeType: String,
+        val fileCount: Int = 1
     ) : DownloadStatus
     data object Cancelled : DownloadStatus
     data class Error(val message: String) : DownloadStatus
@@ -68,6 +105,7 @@ object YouTubeUrlValidator {
         pattern = """^https?://(www\.|m\.|music\.)?(youtube\.com|youtu\.be)/.+""",
         option = RegexOption.IGNORE_CASE
     )
+    private val playlistRegex = Regex("""([?&]list=|/playlist\b)""", RegexOption.IGNORE_CASE)
 
     /** Extracts the first HTTP(S) URL from shared text and validates it as a YouTube URL. */
     fun extractYouTubeUrl(rawText: String): String? {
@@ -80,6 +118,8 @@ object YouTubeUrlValidator {
         val trimmed = url.trim()
         return trimmed.isNotEmpty() && youtubeHostRegex.matches(trimmed)
     }
+
+    fun isPlaylistUrl(url: String): Boolean = playlistRegex.containsMatchIn(url)
 }
 
 /** Pure builder for yt-dlp CLI options, decoupled from Android runtime for unit testing. */
@@ -87,7 +127,7 @@ object DownloadOptionBuilder {
 
     fun buildOptions(config: DownloadConfig, outputTemplate: String): List<Pair<String, String?>> {
         val options = mutableListOf<Pair<String, String?>>(
-            "--no-playlist" to null,
+            (if (config.allowPlaylist) "--yes-playlist" else "--no-playlist") to null,
             "--no-mtime" to null,
             "--no-part" to null,
             "--force-ipv4" to null,
@@ -99,11 +139,21 @@ object DownloadOptionBuilder {
             DownloadFormat.MP4 -> {
                 options += "-f" to config.videoQuality.toFormatSelector()
                 options += "--merge-output-format" to "mp4"
+                if (config.embedSubtitles) {
+                    options += "--write-subs" to null
+                    options += "--write-auto-subs" to null
+                    options += "--sub-langs" to "zh-Hant,zh-TW,zh,en"
+                    options += "--embed-subs" to null
+                }
             }
             DownloadFormat.MP3 -> {
                 options += "-x" to null
                 options += "--audio-format" to "mp3"
                 options += "--audio-quality" to config.audioBitrate.ffmpegArg
+                if (config.embedCoverAndMetadata) {
+                    options += "--embed-thumbnail" to null
+                    options += "--add-metadata" to null
+                }
             }
         }
         return options

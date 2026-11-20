@@ -14,6 +14,7 @@ import com.example.youtubedownload.domain.DownloadConfig
 import com.example.youtubedownload.domain.DownloadFormat
 import com.example.youtubedownload.domain.DownloadOptionBuilder
 import com.example.youtubedownload.domain.DownloadedItem
+import com.example.youtubedownload.domain.VideoPreview
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
@@ -44,11 +45,28 @@ class YouTubeDownloadRepository(private val context: Context) {
         }
     }
 
+    suspend fun fetchVideoInfo(url: String): VideoPreview = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        PythonDnsPatchInstaller.refreshHostCache(context)
+
+        val request = YoutubeDLRequest(url.trim()).apply {
+            addOption("--no-playlist")
+            addOption("--force-ipv4")
+        }
+        val info = YoutubeDL.getInstance().getInfo(request)
+        VideoPreview(
+            title = info.title ?: "YouTube Video",
+            uploader = info.uploader ?: "",
+            durationSeconds = info.duration.toLong(),
+            thumbnailUrl = info.thumbnail
+        )
+    }
+
     suspend fun download(
         config: DownloadConfig,
         processId: String,
         onProgress: (progress: Float, etaSeconds: Long, line: String) -> Unit
-    ): DownloadedFileResult = withContext(Dispatchers.IO) {
+    ): List<DownloadedFileResult> = withContext(Dispatchers.IO) {
         ensureInitialized()
         PythonDnsPatchInstaller.refreshHostCache(context)
 
@@ -65,10 +83,12 @@ class YouTubeDownloadRepository(private val context: Context) {
                 onProgress(progress, etaInSeconds, line)
             }
 
-            val outputFile = findOutputFile(tempDir, config.format.extension)
-                ?: throw IOException("Download finished but no .${config.format.extension} file was produced.")
+            val outputFiles = findOutputFiles(tempDir, config.format.extension)
+            if (outputFiles.isEmpty()) {
+                throw IOException("Download finished but no .${config.format.extension} file was produced.")
+            }
 
-            publishToDownloads(outputFile, config.format)
+            outputFiles.map { file -> publishToDownloads(file, config.format) }
         } finally {
             tempDir.deleteRecursively()
         }
@@ -102,6 +122,22 @@ class YouTubeDownloadRepository(private val context: Context) {
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to list downloaded files", t)
             emptyList()
+        }
+    }
+
+    suspend fun deleteDownloadedFile(item: DownloadedItem): Boolean = withContext(Dispatchers.IO) {
+        val uriString = item.contentUri ?: return@withContext false
+        try {
+            val uri = Uri.parse(uriString)
+            if (uri.scheme == "content") {
+                context.contentResolver.delete(uri, null, null) > 0
+            } else {
+                val path = uri.path ?: return@withContext false
+                File(path).delete()
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to delete $uriString", t)
+            false
         }
     }
 
@@ -181,10 +217,14 @@ class YouTubeDownloadRepository(private val context: Context) {
     private fun guessMimeType(fileName: String): String =
         if (fileName.endsWith(".mp3", ignoreCase = true)) "audio/mpeg" else "video/mp4"
 
-    private fun findOutputFile(tempDir: File, expectedExt: String): File? {
-        val files = tempDir.listFiles()?.filter { it.isFile && it.length() > 0 } ?: return null
-        return files.firstOrNull { it.extension.equals(expectedExt, ignoreCase = true) }
-            ?: files.maxByOrNull { it.length() }
+    private fun findOutputFiles(tempDir: File, expectedExt: String): List<File> {
+        val files = tempDir.listFiles()?.filter { it.isFile && it.length() > 0 } ?: return emptyList()
+        val matching = files.filter { it.extension.equals(expectedExt, ignoreCase = true) }
+        return if (matching.isNotEmpty()) {
+            matching.sortedBy { it.name }
+        } else {
+            listOfNotNull(files.maxByOrNull { it.length() })
+        }
     }
 
     private fun publishToDownloads(sourceFile: File, format: DownloadFormat): DownloadedFileResult {
